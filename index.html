@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Lloyd's Relaxation</title>
+    <script src="https://d3js.org/d3.v4.js"></script>
+    <script src="https://giottojs.org/d3-canvas-transition/0.3.3/d3-canvas-transition.js"></script>
+    <style>
+      #panel {
+          background-color: rgba(245,245,245,0.7);
+          padding: 5px;
+          position: absolute;
+          display: block;
+      }
+    </style>
+</head>
+<body>
+  <div id="panel">
+      <div id="paper">
+      <label>
+        <input id='svg' name="type" type="radio" checked>
+        <span>svg</span>
+      </label>
+      <label>
+        <input id='canvas' name="type" type="radio">
+        <span>canvas</span>
+      </label>
+      </div>
+      <div id="fps">FPS: <span>?</span></div>
+  </div>
+  <div id="example" style="max-width: 960px"></div>
+<script>
+(function () {
+    d3.select('#svg').on('click', function () {
+        draw('svg');
+    });
+    d3.select('#canvas').on('click', function () {
+        draw('canvas');
+    });
+    if (d3.resolution() > 1) {
+        d3.select('#paper').append('label').html(
+            "<input id='canvas-low' name='type' type='radio'><span>canvas low resolution</span>"
+        );
+        d3.select('#canvas-low').on('click', function () {
+            draw('canvas', 1);
+        });
+    }
+    var N = 1000;
+    var paper, vertices, iterations, DD;
+    var example = d3.select("#example"),
+        fps = d3.select("#fps span"),
+        width = d3.getSize(example.style('width')),
+        height = Math.min(500, width),
+        voronoi = d3.voronoi().extent([[0, 0], [width, height]]),
+        fill = d3.scaleSequential(d3.interpolateCool).domain([0, Math.sqrt(width * height / N) * 4]);
+
+    reset(width/2, height/2);
+    draw('svg');
+
+    var time0 = d3.now(), frames = 0;
+    d3.timer(redraw);
+
+    function draw(type, r) {
+        example.select('.paper').remove();
+        paper = example
+                .append(type)
+                .classed('paper', true)
+                .on("click", function() {
+                    var mouse = d3.mouse(this);
+                    reset(mouse[0], mouse[1]);
+                })
+                .attr('width', width).attr('height', height).canvasResolution(r).canvas(true)
+                .attr("stroke-width", '0.5px')
+                .attr("stroke", '#fff');
+    }
+
+    function redraw() {
+        var paths = paper.selectAll("path").data(voronoi.polygons(vertices));
+        frames++;
+
+        paths.enter()
+                .append("path")
+                .merge(paths)
+                .attr('d', marks())
+                .style('fill', function (d) {return fill(Math.sqrt(d3.polygonArea(d)))});
+
+        var time1 = d3.now();
+        if (time1 - time0 > 1000) {
+            fps.text(Math.round(1000*frames/(time1 - time0)));
+            time0 = time1;
+            frames = 0;
+        }
+    }
+
+    function marks () {
+        var context;
+
+        function cell (d, i) {
+            var buffer,
+                centroid = d3.polygonCentroid(d),
+                vertex = vertices[i],
+                dx = centroid[0] - vertex[0],
+                dy = centroid[1] - vertex[1];
+            if (!context) context = buffer = d3.path();
+            vertex[0] += dx;
+            vertex[1] += dy;
+            context.moveTo(d[0][0], d[0][1]);
+            for (var j=1;j<d.length;++j) context.lineTo(d[j][0], d[j][1]);
+            context.closePath();
+            if (buffer) return context = null, buffer + "" || null;
+        }
+
+        cell.context = function (_) {
+            if (arguments.length === 0) return context;
+            context = _;
+            return cell;
+        };
+
+        return cell;
+    }
+
+    function reset (x, y) {
+        vertices = d3.range(N).map(function () {
+            return [x + Math.random() - .5, y + Math.random() - .5];
+        });
+        iterations = 0;
+    }
+}());
+</script>
+</body>
